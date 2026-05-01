@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modbus Gateway</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;color:#333;padding:20px}
+h1{text-align:center;color:#1890ff;margin-bottom:20px;font-size:24px}
+.container{max-width:900px;margin:0 auto}
+.card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);padding:20px;margin-bottom:16px}
+.card h2{font-size:16px;color:#333;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:8px}
+label{display:block;font-size:13px;color:#666;margin-bottom:4px}
+input,select{width:100%;padding:6px 10px;border:1px solid #d9d9d9;border-radius:4px;margin-bottom:10px;font-size:14px}
+input:focus,select:focus{outline:none;border-color:#1890ff}
+.row{display:flex;gap:12px}
+.row>*{flex:1}
+.btn{display:inline-block;padding:8px 24px;background:#1890ff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}
+.btn:hover{background:#40a9ff}
+.btn-danger{background:#ff4d4f}
+.btn-danger:hover{background:#ff7875}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 10px;border:1px solid #eee;text-align:left}
+th{background:#fafafa;font-weight:600}
+.status-ok{color:#52c41a}
+.status-err{color:#ff4d4f}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Modbus Gateway Configuration</h1>
+
+<div class="card">
+<h2>System Status</h2>
+<div id="status-area">Loading...</div>
+<button class="btn" onclick="refreshStatus()">Refresh</button>
+</div>
+
+<div class="card">
+<h2>System Parameters</h2>
+<div class="row">
+<div>
+<label>Slave Address</label>
+<input type="number" id="slaveAddr" min="1" max="247" value="1">
+</div>
+<div>
+<label>Poll Interval (ms)</label>
+<input type="number" id="pollInterval" min="100" max="60000" value="4000">
+</div>
+</div>
+<div class="row">
+<div>
+<label>Collect Baud</label>
+<select id="collectBaud">
+<option value="9600">9600</option>
+<option value="19200">19200</option>
+<option value="38400">38400</option>
+<option value="57600">57600</option>
+<option value="115200" selected>115200</option>
+</select>
+</div>
+<div>
+<label>Forward Baud</label>
+<select id="forwardBaud">
+<option value="9600">9600</option>
+<option value="19200">19200</option>
+<option value="38400">38400</option>
+<option value="57600">57600</option>
+<option value="115200" selected>115200</option>
+</select>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h2>Sensor Configuration</h2>
+<div class="row">
+<div>
+<label>Sensor Count</label>
+<input type="number" id="sensorCount" min="0" max="4" value="4">
+</div>
+</div>
+<div id="sensor-config"></div>
+</div>
+
+<div class="card">
+<h2>Camera Configuration</h2>
+<div id="camera-config"></div>
+</div>
+
+<div style="text-align:center;margin-top:16px">
+<button class="btn" onclick="saveConfig()">Save Configuration</button>
+<button class="btn" onclick="loadConfig()" style="margin-left:8px;background:#52c41a">Load</button>
+</div>
+</div>
+
+<script>
+var config = null;
+
+function refreshStatus() {
+    fetch('/api/status').then(r=>r.json()).then(d=>{
+        var h = '<table><tr><th>Sensor</th><th>Slave Addr</th>';
+        if(d.sensors&&d.sensors.length>0){
+            var keys = Object.keys(d.sensors[0].data||{});
+            keys.forEach(k=>{h+='<th>'+k+'</th>'});
+        }
+        h+='</tr>';
+        (d.sensors||[]).forEach((s,i)=>{
+            h+='<tr><td>Sensor '+i+'</td><td>'+s.addr+'</td>';
+            keys.forEach(k=>{h+='<td>'+(s.data[k]||0)+'</td>'});
+            h+='</tr>';
+        });
+        h+='</table>';
+        h+='<p style="margin-top:8px;font-size:13px;color:#666">Total Registers: '+(d.totalRegs||0)+'</p>';
+        document.getElementById('status-area').innerHTML=h;
+    }).catch(e=>{
+        document.getElementById('status-area').innerHTML='<span class="status-err">Failed to load</span>';
+    });
+}
+
+function renderSensors(n) {
+    var h='';
+    for(var i=0;i<n;i++){
+        h+='<div style="border:1px solid #eee;border-radius:4px;padding:12px;margin-bottom:8px">';
+        h+='<h3 style="font-size:14px;margin-bottom:8px">Sensor '+i+'</h3>';
+        h+='<div class="row"><div><label>Slave Address</label>';
+        h+='<input type="number" id="s'+i+'addr" min="1" max="247" value="'+(config&&config.sensors[i]?config.sensors[i].addr:(3+i))+'">';
+        h+='</div><div><label>Data Points</label>';
+        h+='<input type="number" id="s'+i+'dp" min="1" max="8" value="'+(config&&config.sensors[i]?config.sensors[i].dpCount:4)+'">';
+        h+='</div></div></div>';
+    }
+    document.getElementById('sensor-config').innerHTML=h;
+}
+
+function renderCameras(n) {
+    var h='';
+    for(var i=0;i<n;i++){
+        h+='<div style="border:1px solid #eee;border-radius:4px;padding:12px;margin-bottom:8px">';
+        h+='<h3 style="font-size:14px;margin-bottom:8px">Camera '+i+'</h3>';
+        h+='<div class="row"><div><label>IP Address</label>';
+        h+='<input type="text" id="c'+i+'ip" value="'+(config&&config.cameras[i]?config.cameras[i].ip:'192.168.1.64')+'">';
+        h+='</div><div><label>Channel</label>';
+        h+='<input type="number" id="c'+i+'ch" min="1" max="16" value="'+(config&&config.cameras[i]?config.cameras[i].channel:1)+'">';
+        h+='</div></div></div>';
+    }
+    document.getElementById('camera-config').innerHTML=h;
+}
+
+function loadConfig() {
+    fetch('/api/config').then(r=>r.json()).then(d=>{
+        config=d;
+        document.getElementById('slaveAddr').value=d.slaveAddr||1;
+        document.getElementById('pollInterval').value=d.pollInterval||4000;
+        document.getElementById('sensorCount').value=d.sensorCount||4;
+        renderSensors(d.sensorCount||4);
+        renderCameras(d.sensorCount||4);
+    }).catch(e=>{alert('Load failed')});
+}
+
+function saveConfig() {
+    var n=parseInt(document.getElementById('sensorCount').value)||4;
+    var cfg={
+        sensorCount:n,
+        slaveAddr:parseInt(document.getElementById('slaveAddr').value)||1,
+        pollInterval:parseInt(document.getElementById('pollInterval').value)||4000,
+        sensors:[],
+        cameras:[]
+    };
+    for(var i=0;i<n;i++){
+        cfg.sensors.push({
+            addr:parseInt(document.getElementById('s'+i+'addr').value)||(3+i),
+            dpCount:parseInt(document.getElementById('s'+i+'dp').value)||4
+        });
+        cfg.cameras.push({
+            ip:document.getElementById('c'+i+'ip').value||'192.168.1.64',
+            channel:parseInt(document.getElementById('c'+i+'ch').value)||1
+        });
+    }
+    fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)})
+    .then(r=>r.json()).then(d=>{
+        if(d.result==='ok'){alert('Saved!')}
+        else{alert('Save error')}
+    }).catch(e=>{alert('Save failed')});
+}
+
+window.onload=function(){loadConfig();refreshStatus();setInterval(refreshStatus,5000)};
+</script>
+</body>
+</html>
