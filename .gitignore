@@ -1,0 +1,27 @@
+# Keil build outputs
+MDK-ARM/Listings/
+MDK-ARM/Objects/
+MDK-ARM/*.uvguix.*
+MDK-ARM/*.bak
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.bin
+*.htm
+*.lnp
+*.sct
+*.dep
+*.lst
+*.map
+
+# IDE
+*.uvoptx
+.settings/
+.cproject
+.project
+
+# OS
+.DS_Store
+Thumbs.db
